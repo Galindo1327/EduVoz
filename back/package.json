@@ -1,12 +1,14 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "API backend de EduVoz (Express + PostgreSQL)",
   "main": "index.js",
   "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "keywords": [],
+  "keywords": ["express","api","eduvoz"],
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -20,5 +22,8 @@
     "nodemailer": "^6.9.15",
     "passport": "^0.7.0",
     "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4"
   }
 }

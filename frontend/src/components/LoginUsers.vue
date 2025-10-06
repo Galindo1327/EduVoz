@@ -27,7 +27,7 @@
 
 <script setup>
 import useAuth from '@/composables/useAuth.js';
-import logo from '@/assets/logo.png';
+import logo from '@/assets/eduvozlogo.png';
 
 const { username, password, errorMessage, login } = useAuth();
 

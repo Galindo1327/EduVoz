@@ -46,7 +46,7 @@
 
 <script setup>
 import useRegister from '@/composables/useRegister.js';
-import logo from '@/assets/logo.png'; 
+import logo from '@/assets/eduvozlogo.png'; 
 import { ref } from 'vue';
 
 const { username, password, confirmPassword, email, successMessage, register, goToLogin} = useRegister();

@@ -71,7 +71,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter } from 'vue-router';
-import logo from '@/assets/logo.png'; 
+import logo from '@/assets/eduvozlogo.png'; 
 
 const isSidebarExpanded = ref(false);
 const router = useRouter();

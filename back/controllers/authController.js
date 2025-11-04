@@ -51,7 +51,24 @@ exports.login = async (req, res) => {
     return res.status(400).json({ message: 'Todos los campos son obligatorios' });
   }
 
+  // Modo DEMO: usuario por defecto sin consultar BD
   try {
+    const enableDefaultLogin = process.env.ENABLE_DEFAULT_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
+    if (enableDefaultLogin) {
+      const DEFAULT_USER = process.env.DEFAULT_USER || 'demo';
+      const DEFAULT_PASS = process.env.DEFAULT_PASS || 'demo123';
+
+      if (username === DEFAULT_USER && password === DEFAULT_PASS) {
+        return res.json({
+          message: 'Inicio de sesión exitoso (modo demo)',
+          userId: 0,
+          username: DEFAULT_USER,
+          demo: true
+        });
+      }
+    }
+
+    // Flujo normal: verificar contra la base de datos
     const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
 
     if (result.rows.length === 0) {

@@ -39,7 +39,7 @@
         <div class="d-flex align-items-center">
           <!-- #LOGO EN LA BARRA SUPERIOR -->
           <img :src="logo" alt="Logo" class="logo me-2" />
-          <h2 class="text-success">GstWeb</h2>
+          <h2 class="text-success">EduVoz</h2>
         </div>
         <div class="d-flex align-items-center">
           <div class="search-bar me-3">

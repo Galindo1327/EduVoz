@@ -1,14 +1,14 @@
 <template>
   <div class="welcome-container">
     <div class="header">
-      <h1>Bienvenido a GstWeb</h1>
+      <h1>Bienvenido a EduVoz</h1>
       <p>Tu gestor de proyectos eficiente y fácil de usar.</p>
     </div>
     <div class="content">
       <div class="intro">
-        <h2>¿Qué es un Gestor de Proyectos?</h2>
+        <h2>¿Qué es un EduVoz?</h2>
         <p>
-          Un gestor de proyectos es una herramienta que te ayuda a planificar, organizar y gestionar tus proyectos de manera eficiente. Con GstWeb, puedes crear proyectos, asignar tareas, colaborar con tu equipo y hacer un seguimiento del progreso de tus proyectos en tiempo real.
+          Un EduVoz es una herramienta que te ayuda a planificar, organizar y gestionar tus proyectos de manera eficiente. Con EduVoz, puedes crear proyectos, asignar tareas, colaborar con tu equipo y hacer un seguimiento del progreso de tus proyectos en tiempo real.
         </p>
         <button @click="irACrearProyecto" class="btn btn-primary">Crear Proyecto</button>
       </div>

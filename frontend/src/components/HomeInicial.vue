@@ -5,17 +5,17 @@
     <h1>INICIO</h1>
 
     <div class="row">
-      <!-- Projects Section -->
+      <!-- Reading Section -->
       <div class="col-md-12">
-        <h2>Proyectos <button class="btn btn-success mt-3" @click="abrirFormulario">Añadir Proyecto</button></h2> 
+        <h2>Lecturas<button class="btn btn-success mt-3" @click="abrirFormulario">Añadir Lectura</button></h2> 
         
         <table class="table table-dark table-striped table-hover">
-          
           <thead>
             <tr>
-              <th>Nombre del Proyecto</th>
+              <th>Nombre de la Lectura</th>
               <th>Descripción</th>
               <th>Fecha</th>
+              <th>Archivo PDF</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -25,14 +25,22 @@
               <td>{{ proyecto.description }}</td>
               <td>{{ proyecto.date }}</td>
               <td>
-                <button class="btn btn-primary me-2" @click="abrirFormularioEdicion(proyecto)" title="Editar Proyecto">
+                <span v-if="proyecto.pdfUrl">
+                  <a :href="proyecto.pdfUrl" target="_blank" class="text-success text-decoration-none">
+                    <i class="fas fa-file-pdf"></i> Ver PDF
+                  </a>
+                </span>
+                <span v-else class="text-muted">Sin archivo</span>
+              </td>
+              <td>
+                <button class="btn btn-primary me-2" @click="abrirFormularioEdicion(proyecto)" title="Editar Lectura">
                   <i class="fas fa-edit"></i>
                 </button>
                 
-                <button class="btn btn-secondary me-2" @click="gestionarProyecto(proyecto.id)" title="Gestionar Proyecto">
+                <button class="btn btn-secondary me-2" @click="gestionarProyecto(proyecto.id)" title="Gestionar Lectura">
                   <i class="fas fa-tasks"></i>
                 </button>
-                <button class="btn btn-danger" @click="confirmarEliminacion(proyecto.id)" title="Eliminar Proyecto">
+                <button class="btn btn-danger" @click="confirmarEliminacion(proyecto.id)" title="Eliminar Lectura">
                   <i class="fas fa-trash-alt"></i>
                 </button>
               </td>
@@ -43,27 +51,45 @@
       </div>
     </div>
 
-    <!-- Formulario de Añadir/Editar Proyecto -->
+    <!-- Formulario de Añadir/Editar Lectura -->
     <div v-if="mostrarFormulario" class="modal">
       <div class="form-container">
-        <h3>{{ editandoProyecto ? 'Editar Proyecto' : 'Añadir Proyecto' }}</h3>
+        <h3>{{ editandoProyecto ? 'Editar Lectura' : 'Añadir Lectura' }}</h3>
         <form @submit.prevent="editandoProyecto ? guardarCambiosProyecto() : guardarProyecto()">
           <div class="form-group">
-            <label for="nombre">Nombre del Proyecto:</label>
+            <label for="nombre">Nombre de la Lectura:</label>
             <input type="text" v-model="nuevoProyecto.nombre" required />
           </div>
           <div class="form-group">
             <label for="descripcion">Descripción:</label>
-            <input type="text" v-model="nuevoProyecto.descripcion" required />
+            <textarea v-model="nuevoProyecto.descripcion" rows="3" required></textarea>
           </div>
           <div class="form-group">
             <label for="fecha">Fecha:</label>
             <input type="date" v-model="nuevoProyecto.fecha" required />
           </div>
+          
+          <!-- TODO: Campo para subir archivo PDF -->
           <div class="form-group">
-            <label for="newdate">Nuevo campo:</label>
-            <input type="text" v-model="nuevoProyecto.newdate" required />
+            <label for="pdfFile">Archivo PDF (opcional):</label>
+            <input 
+              type="file" 
+              id="pdfFile"
+              ref="pdfFileInput"
+              @change="handleFileUpload" 
+              accept=".pdf"
+              class="form-control-file"
+            />
+            <small class="form-text text-muted">
+              Selecciona un archivo PDF para adjuntar a esta lectura
+            </small>
+            <div v-if="selectedFile" class="mt-2">
+              <span class="badge bg-info">
+                <i class="fas fa-file-pdf"></i> {{ selectedFile.name }}
+              </span>
+            </div>
           </div>
+
           <div class="form-actions">
             <button type="submit" class="btn-save">{{ editandoProyecto ? 'Guardar Cambios' : 'Guardar' }}</button>
             <button type="button" class="btn-cancel" @click="cerrarFormulario">Cancelar</button>
@@ -108,18 +134,20 @@ const proyectosAsignados = ref([]);
 const nuevoProyecto = ref({
   nombre: '',
   descripcion: '',
-  fecha: '',
-  newdate: ''
+  fecha: ''
 }); 
+const selectedFile = ref(null); // Para almacenar el archivo PDF seleccionado
 const editandoProyecto = ref(false);
 const proyectoEditadoId = ref(null);
 const mostrarFormulario = ref(false);
+const pdfFileInput = ref(null); // Referencia al input de archivo
 const router = useRouter();
 
 const abrirFormulario = () => { 
   mostrarFormulario.value = true; 
   editandoProyecto.value = false;
   nuevoProyecto.value = { nombre: '', descripcion: '', fecha: '' };
+  selectedFile.value = null;
 };
 
 const abrirFormularioEdicion = (proyecto) => {
@@ -127,14 +155,56 @@ const abrirFormularioEdicion = (proyecto) => {
   editandoProyecto.value = true;
   proyectoEditadoId.value = proyecto.id;
   nuevoProyecto.value = { nombre: proyecto.name, descripcion: proyecto.description, fecha: proyecto.date };
+  selectedFile.value = null;
 };
 
 const cerrarFormulario = () => { 
-  mostrarFormulario.value = false; 
+  mostrarFormulario.value = false;
+  selectedFile.value = null;
+  if (pdfFileInput.value) {
+    pdfFileInput.value.value = '';
+  }
+};
+
+// Manejar la selección del archivo PDF
+const handleFileUpload = (event) => {
+  const file = event.target.files[0];
+  if (file && file.type === 'application/pdf') {
+    selectedFile.value = file;
+    console.log('Archivo PDF seleccionado:', file.name);
+  } else {
+    alert('Por favor, selecciona un archivo PDF válido');
+    event.target.value = '';
+    selectedFile.value = null;
+  }
 };
 
 const guardarProyecto = async () => {
   try {
+    let pdfUrl = null;
+
+    // Si hay un archivo PDF seleccionado, subirlo primero
+    if (selectedFile.value) {
+      const formData = new FormData();
+      formData.append('pdf', selectedFile.value);
+
+      const uploadResponse = await fetch('http://localhost:3000/api/upload-pdf', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (uploadResponse.ok) {
+        const uploadData = await uploadResponse.json();
+        pdfUrl = uploadData.pdfUrl;
+        console.log('✅ PDF subido exitosamente:', pdfUrl);
+      } else {
+        console.error('Error al subir el PDF');
+        alert('Error al subir el archivo PDF');
+        return;
+      }
+    }
+
+    // Crear el proyecto con la URL del PDF (si existe)
     const response = await fetch('http://localhost:3000/api/projects', {
       method: 'POST',
       headers: {
@@ -145,7 +215,7 @@ const guardarProyecto = async () => {
         name: nuevoProyecto.value.nombre,
         description: nuevoProyecto.value.descripcion,
         date: nuevoProyecto.value.fecha,
-        newdate: nuevoProyecto.value.newdate,
+        pdfUrl: pdfUrl,
       })
     });
 
@@ -153,12 +223,15 @@ const guardarProyecto = async () => {
       const data = await response.json();
       proyectos.value.push(data.project); 
       cerrarFormulario();
-      nuevoProyecto.value = { nombre: '', descripcion: '', fecha: '', newdate: '' };
+      nuevoProyecto.value = { nombre: '', descripcion: '', fecha: '' };
+      alert('Lectura creada exitosamente' + (pdfUrl ? ' con archivo PDF' : ''));
     } else {
-      console.error('Error al guardar el proyecto');
+      console.error('Error al guardar la lectura');
+      alert('Error al guardar la lectura');
     }
   } catch (error) {
     console.error('Error en la conexión:', error);
+    alert('Error en la conexión al servidor');
   }
 };
 
@@ -193,7 +266,7 @@ const guardarCambiosProyecto = async () => {
 
 
 const confirmarEliminacion = (id) => {
-  const confirmacion = confirm('¿Estás seguro de que deseas eliminar este proyecto?');
+  const confirmacion = confirm('¿Estás seguro de que deseas eliminar esta lectura?');
   if (confirmacion) {
     eliminarProyecto(id);
   }
@@ -209,12 +282,15 @@ const eliminarProyecto = async (id) => {
 
     if (response.ok) {
       proyectos.value = proyectos.value.filter(proyecto => proyecto.id !== id);
-      console.log('Proyecto eliminado exitosamente');
+      console.log('Lectura eliminada exitosamente');
+      alert('Lectura eliminada exitosamente');
     } else {
-      console.error('Error al eliminar el proyecto');
+      console.error('Error al eliminar la lectura');
+      alert('Error al eliminar la lectura');
     }
   } catch (error) {
     console.error('Error en la conexión:', error);
+    alert('Error en la conexión al servidor');
   }
 };
 
@@ -230,7 +306,7 @@ const obtenerProyectos = async () => {
     if (response.ok) {
       proyectos.value = await response.json();
     } else {
-      console.error('Error al obtener los proyectos');
+      console.error('Error al obtener las lecturas');
     }
   } catch (error) {
     console.error('Error en la conexión:', error);
@@ -306,7 +382,9 @@ label {
 }
 
 input[type="text"],
-input[type="date"] {
+input[type="date"],
+textarea,
+input[type="file"] {
   width: 100%;
   padding: 8px;
   border: 1px solid #ddd;
@@ -315,10 +393,32 @@ input[type="date"] {
   transition: border-color 0.3s ease;
 }
 
+textarea {
+  resize: vertical;
+  font-family: inherit;
+}
+
 input[type="text"]:focus,
-input[type="date"]:focus {
+input[type="date"]:focus,
+textarea:focus {
   border-color: #007bff;
   outline: none;
+}
+
+.form-control-file {
+  padding: 5px;
+  border: 2px dashed #ddd;
+  background-color: #f8f9fa;
+}
+
+.form-control-file:hover {
+  border-color: #007bff;
+  background-color: #e9ecef;
+}
+
+.badge {
+  padding: 8px 12px;
+  font-size: 14px;
 }
 
 .form-actions {

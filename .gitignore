@@ -1,19 +1,30 @@
 @'
 # Dependencias
 node_modules/
+
 # Logs
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+
 # Builds
 dist/
 dist-ssr/
 *.log
+
 # Env
 .env
 .env.local
 .env.*.local
+
+# Firebase - ⚠️ IMPORTANTE: No subir credenciales
+back/config/ServiceAccountKey.json
+back/config/serviceAccountKey.json
+**/ServiceAccountKey.json
+**/serviceAccountKey.json
+firebase-adminsdk-*.json
+
 # Editor
 .vscode/
 .idea/

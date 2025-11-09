@@ -1,7 +1,25 @@
 const express = require('express');
 const router = express.Router();
 const projectController = require('../controllers/projectController');
+const multer = require('multer');
 
+// Configurar Multer para manejar archivos en memoria
+const upload = multer({ 
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // Límite de 10MB
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype === 'application/pdf') {
+      cb(null, true);
+    } else {
+      cb(new Error('Solo se permiten archivos PDF'));
+    }
+  }
+});
+
+// Ruta para subir PDF
+router.post('/upload-pdf', upload.single('pdf'), projectController.uploadPDF);
 
 router.post('/projects', projectController.createProject);
 router.get('/projects', projectController.getProjects);

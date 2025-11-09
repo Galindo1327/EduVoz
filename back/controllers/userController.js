@@ -1,5 +1,4 @@
-const { Pool } = require('pg');
-const pool = new Pool(require('../config/db'));
+const { db } = require('../config/db');
 
 exports.getUserProfile = async (req, res) => {
     const username = req.query.username; // Obtener el username de los parámetros de consulta
@@ -8,11 +7,21 @@ exports.getUserProfile = async (req, res) => {
       return res.status(400).json({ message: 'Username y email son requeridos' });
     }
     try {
-      const result = await pool.query('SELECT username, email FROM users WHERE username = $1 AND email = $2', [username, email]);
-      if (result.rows.length === 0) {
+      const usersRef = db.collection('users');
+      const snapshot = await usersRef
+        .where('username', '==', username)
+        .where('email', '==', email)
+        .get();
+      
+      if (snapshot.empty) {
         return res.status(404).json({ message: 'Usuario no encontrado' });
       }
-      res.status(200).json(result.rows[0]);
+
+      const user = snapshot.docs[0].data();
+      res.status(200).json({
+        username: user.username,
+        email: user.email
+      });
     } catch (error) {
       console.error('Error al obtener los datos del usuario:', error);
       res.status(500).json({ message: 'Error al obtener los datos del usuario' });

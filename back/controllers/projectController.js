@@ -1,48 +1,95 @@
-const { Pool } = require('pg');
-const pool = new Pool(require('../config/db'));
+﻿const { db, bucket } = require('../config/db');
 
-exports.createProject = async (req, res) => {
-  const { name, description, date, newdate} = req.body;
-  const username = req.body.username;
-
+// Función para subir PDF a Firebase Storage
+exports.uploadPDF = async (req, res) => {
   try {
-    console.log("Creando proyecto para el usuario:", username);
-    console.log("Nuevo campo:", newdate);
+    if (!req.file) {
+      return res.status(400).json({ message: 'No se proporcionó ningún archivo' });
+    }
 
-    const result = await pool.query(
-      'INSERT INTO projects (name, description, date, username) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, description, date, username]
-    );
+    const file = req.file;
+    const fileName = `pdfs/${Date.now()}_${file.originalname}`;
+    const fileUpload = bucket.file(fileName);
 
-
-    return res.status(201).json({
-      message: 'Proyecto creado exitosamente',
-      project: result.rows[0], 
+    const stream = fileUpload.createWriteStream({
+      metadata: {
+        contentType: file.mimetype,
+      },
     });
 
+    stream.on('error', (error) => {
+      console.error('Error al subir archivo:', error);
+      return res.status(500).json({ message: 'Error al subir el archivo' });
+    });
+
+    stream.on('finish', async () => {
+      // Hacer el archivo público y obtener la URL
+      await fileUpload.makePublic();
+      const publicUrl = `https://storage.googleapis.com/${bucket.name}/${fileName}`;
+      
+      console.log('✅ PDF subido exitosamente:', publicUrl);
+      res.status(200).json({ 
+        message: 'PDF subido exitosamente',
+        pdfUrl: publicUrl 
+      });
+    });
+
+    stream.end(file.buffer);
   } catch (error) {
-    console.error("Error al crear el proyecto:", error);
-    return res.status(500).json({ message: 'Error al crear el proyecto' });
+    console.error('Error al procesar la subida:', error);
+    res.status(500).json({ message: 'Error al procesar la subida del archivo' });
   }
 };
 
+exports.createProject = async (req, res) => {
+  const { name, description, date, pdfUrl } = req.body;
+  const username = req.body.username;
+
+  try {
+    console.log("Creando lectura para el usuario:", username);
+    const projectData = {
+      name,
+      description,
+      date,
+      username,
+      createdAt: new Date().toISOString(),
+      pdfUrl: pdfUrl || null
+    };
+
+    const projectRef = await db.collection('projects').add(projectData);
+    const newProject = await projectRef.get();
+
+    return res.status(201).json({
+      message: 'Lectura creada exitosamente',
+      project: {
+        id: projectRef.id,
+        ...newProject.data()
+      }
+    });
+  } catch (error) {
+    console.error("Error al crear la lectura:", error);
+    return res.status(500).json({ message: 'Error al crear la lectura' });
+  }
+};
 
 exports.getProjects = async (req, res) => {
   const username = req.query.username;  
-
   if (!username) {
     return res.status(400).json({ message: 'El nombre de usuario es requerido' });
   }
 
   try {
-    const result = await pool.query('SELECT * FROM projects WHERE username = $1', [username]);
-    console.log("Obteniendo proyectos para el usuario:", username);
-    
-    return res.status(200).json(result.rows);
-
+    const projectsRef = db.collection('projects');
+    const snapshot = await projectsRef.where('username', '==', username).get();
+    console.log("Obteniendo lecturas para el usuario:", username);
+    const projects = [];
+    snapshot.forEach(doc => {
+      projects.push({ id: doc.id, ...doc.data() });
+    });
+    return res.status(200).json(projects);
   } catch (error) {
-    console.error("Error al obtener proyectos:", error);
-    return res.status(500).json({ message: 'Error al obtener proyectos' });
+    console.error("Error al obtener lecturas:", error);
+    return res.status(500).json({ message: 'Error al obtener lecturas' });
   }
 };
 
@@ -51,19 +98,20 @@ exports.deleteProject = async (req, res) => {
   const username = req.query.username; 
 
   try {
-    const result = await pool.query(
-      'DELETE FROM projects WHERE id = $1 AND username = $2 RETURNING *',
-      [projectId, username]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Proyecto no encontrado o no autorizado' });
+    const projectRef = db.collection('projects').doc(projectId);
+    const projectDoc = await projectRef.get();
+    if (!projectDoc.exists) {
+      return res.status(404).json({ message: 'Lectura no encontrada' });
     }
-
-    res.status(200).json({ message: 'Proyecto eliminado exitosamente' });
+    const projectData = projectDoc.data();
+    if (projectData.username !== username) {
+      return res.status(403).json({ message: 'No autorizado para eliminar esta lectura' });
+    }
+    await projectRef.delete();
+    res.status(200).json({ message: 'Lectura eliminada exitosamente' });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error al eliminar el proyecto' });
+    res.status(500).json({ message: 'Error al eliminar la lectura' });
   }
 };
 
@@ -73,34 +121,36 @@ exports.updateProject = async (req, res) => {
   const username = req.body.username;
 
   try {
-    const result = await pool.query(
-      'UPDATE projects SET name = $1, description = $2, date = $3 WHERE id = $4 AND username = $5 RETURNING *',
-      [name, description, date, projectId, username]
-    );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'Proyecto no encontrado o no autorizado' });
+    const projectRef = db.collection('projects').doc(projectId);
+    const projectDoc = await projectRef.get();
+    if (!projectDoc.exists) {
+      return res.status(404).json({ message: 'Lectura no encontrada' });
     }
-
-    res.status(200).json({ project: result.rows[0] });
+    const projectData = projectDoc.data();
+    if (projectData.username !== username) {
+      return res.status(403).json({ message: 'No autorizado para editar esta lectura' });
+    }
+    const updatedData = { name, description, date, updatedAt: new Date().toISOString() };
+    await projectRef.update(updatedData);
+    const updatedDoc = await projectRef.get();
+    res.status(200).json({ project: { id: projectRef.id, ...updatedDoc.data() } });
   } catch (error) {
     console.error(error);
-    res.status(500).json({ message: 'Error al actualizar el proyecto' });
+    res.status(500).json({ message: 'Error al actualizar la lectura' });
   }
 };
-//-------------------------------------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------------------------------
-//-------------------------------------------------------------------------------------------------------------------------
+
+// Funciones adicionales para gestión de proyectos y tareas - Firebase
 
 exports.getProjectById = async (req, res) => {
   const projectId = req.params.id;
   try {
-    const result = await pool.query('SELECT * FROM projects WHERE id = $1', [projectId]);
-    if (result.rows.length === 0) {
+    const projectRef = db.collection('projects').doc(projectId);
+    const projectDoc = await projectRef.get();
+    if (!projectDoc.exists) {
       return res.status(404).json({ message: 'Proyecto no encontrado' });
     }
-    res.status(200).json(result.rows[0]);
+    res.status(200).json({ id: projectDoc.id, ...projectDoc.data() });
   } catch (error) {
     console.error('Error al obtener el proyecto:', error);
     res.status(500).json({ message: 'Error al obtener el proyecto' });
@@ -110,8 +160,13 @@ exports.getProjectById = async (req, res) => {
 exports.getTasksByProjectId = async (req, res) => {
   const projectId = req.params.id;
   try {
-    const result = await pool.query('SELECT * FROM tasks WHERE project_id = $1', [projectId]);
-    res.status(200).json(result.rows);
+    const tasksRef = db.collection('tasks');
+    const snapshot = await tasksRef.where('project_id', '==', projectId).get();
+    const tasks = [];
+    snapshot.forEach(doc => {
+      tasks.push({ id: doc.id, ...doc.data() });
+    });
+    res.status(200).json(tasks);
   } catch (error) {
     console.error('Error al obtener las tareas:', error);
     res.status(500).json({ message: 'Error al obtener las tareas' });
@@ -122,11 +177,10 @@ exports.createTask = async (req, res) => {
   const projectId = req.params.id;
   const { name, description, status } = req.body;
   try {
-    const result = await pool.query(
-      'INSERT INTO tasks (name, description, status, project_id) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name, description, status, projectId]
-    );
-    res.status(201).json(result.rows[0]);
+    const taskData = { name, description, status, project_id: projectId, createdAt: new Date().toISOString() };
+    const taskRef = await db.collection('tasks').add(taskData);
+    const newTask = await taskRef.get();
+    res.status(201).json({ id: taskRef.id, ...newTask.data() });
   } catch (error) {
     console.error('Error al crear la tarea:', error);
     res.status(500).json({ message: 'Error al crear la tarea' });
@@ -137,14 +191,15 @@ exports.updateTask = async (req, res) => {
   const taskId = req.params.taskId;
   const { name, description, status } = req.body;
   try {
-    const result = await pool.query(
-      'UPDATE tasks SET name = $1, description = $2, status = $3 WHERE id = $4 RETURNING *',
-      [name, description, status, taskId]
-    );
-    if (result.rows.length === 0) {
+    const taskRef = db.collection('tasks').doc(taskId);
+    const taskDoc = await taskRef.get();
+    if (!taskDoc.exists) {
       return res.status(404).json({ message: 'Tarea no encontrada' });
     }
-    res.status(200).json(result.rows[0]);
+    const updatedData = { name, description, status, updatedAt: new Date().toISOString() };
+    await taskRef.update(updatedData);
+    const updatedDoc = await taskRef.get();
+    res.status(200).json({ id: taskRef.id, ...updatedDoc.data() });
   } catch (error) {
     console.error('Error al actualizar la tarea:', error);
     res.status(500).json({ message: 'Error al actualizar la tarea' });
@@ -154,10 +209,12 @@ exports.updateTask = async (req, res) => {
 exports.deleteTask = async (req, res) => {
   const taskId = req.params.taskId;
   try {
-    const result = await pool.query('DELETE FROM tasks WHERE id = $1 RETURNING *', [taskId]);
-    if (result.rows.length === 0) {
+    const taskRef = db.collection('tasks').doc(taskId);
+    const taskDoc = await taskRef.get();
+    if (!taskDoc.exists) {
       return res.status(404).json({ message: 'Tarea no encontrada' });
     }
+    await taskRef.delete();
     res.status(200).json({ message: 'Tarea eliminada exitosamente' });
   } catch (error) {
     console.error('Error al eliminar la tarea:', error);
@@ -168,39 +225,47 @@ exports.deleteTask = async (req, res) => {
 exports.getUsersByProjectId = async (req, res) => {
   const projectId = req.params.id;
   try {
-    const result = await pool.query(
-      'SELECT users.username, users.email FROM users JOIN project_users ON users.id = project_users.user_id WHERE project_users.project_id = $1',
-      [projectId]
-    );
-    res.status(200).json(result.rows);
+    const projectUsersRef = db.collection('project_users');
+    const snapshot = await projectUsersRef.where('project_id', '==', projectId).get();
+    const userPromises = [];
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      userPromises.push(db.collection('users').doc(data.user_id).get());
+    });
+    const userDocs = await Promise.all(userPromises);
+    const users = userDocs.map(doc => {
+      const data = doc.data();
+      return { id: doc.id, username: data.username, email: data.email };
+    });
+    res.status(200).json(users);
   } catch (error) {
     console.error('Error al obtener los usuarios:', error);
     res.status(500).json({ message: 'Error al obtener los usuarios' });
   }
 };
+
 exports.assignUserToProject = async (req, res) => {
   const projectId = req.params.id;
   const { username } = req.body;
   try {
-    const userResult = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
-    if (userResult.rows.length === 0) {
+    const usersRef = db.collection('users');
+    const userSnapshot = await usersRef.where('username', '==', username).get();
+    if (userSnapshot.empty) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
-    const userId = userResult.rows[0].id;
-
-    const existingAssignment = await pool.query(
-      'SELECT * FROM project_users WHERE project_id = $1 AND user_id = $2',
-      [projectId, userId]
-    );
-    if (existingAssignment.rows.length > 0) {
+    const userId = userSnapshot.docs[0].id;
+    const projectUsersRef = db.collection('project_users');
+    const existingAssignment = await projectUsersRef
+      .where('project_id', '==', projectId)
+      .where('user_id', '==', userId)
+      .get();
+    if (!existingAssignment.empty) {
       return res.status(409).json({ message: 'El usuario ya está asignado a este proyecto.' });
     }
-
-    const result = await pool.query(
-      'INSERT INTO project_users (project_id, user_id) VALUES ($1, $2) RETURNING *',
-      [projectId, userId]
-    );
-    res.status(201).json(result.rows[0]);
+    const assignmentData = { project_id: projectId, user_id: userId, assignedAt: new Date().toISOString() };
+    const assignmentRef = await projectUsersRef.add(assignmentData);
+    const newAssignment = await assignmentRef.get();
+    res.status(201).json({ id: assignmentRef.id, ...newAssignment.data() });
   } catch (error) {
     console.error('Error al asignar el usuario al proyecto:', error);
     res.status(500).json({ message: 'Error al asignar el usuario al proyecto' });
@@ -210,19 +275,23 @@ exports.assignUserToProject = async (req, res) => {
 exports.removeUserFromProject = async (req, res) => {
   const projectId = req.params.projectId;
   const userId = req.params.userId;
-
   if (!projectId || !userId) {
     return res.status(400).json({ message: 'El projectId y el userId son obligatorios' });
   }
-
   try {
-    const result = await pool.query(
-      'DELETE FROM project_users WHERE project_id = $1 AND user_id = $2 RETURNING *',
-      [projectId, userId]
-    );
-    if (result.rows.length === 0) {
+    const projectUsersRef = db.collection('project_users');
+    const snapshot = await projectUsersRef
+      .where('project_id', '==', projectId)
+      .where('user_id', '==', userId)
+      .get();
+    if (snapshot.empty) {
       return res.status(404).json({ message: 'Usuario no encontrado en el proyecto' });
     }
+    const deletePromises = [];
+    snapshot.forEach(doc => {
+      deletePromises.push(doc.ref.delete());
+    });
+    await Promise.all(deletePromises);
     res.status(200).json({ message: 'Usuario eliminado del proyecto exitosamente' });
   } catch (error) {
     console.error('Error al eliminar el usuario del proyecto:', error);
@@ -232,54 +301,50 @@ exports.removeUserFromProject = async (req, res) => {
 
 exports.getAssignedProjects = async (req, res) => {
   const username = req.query.username;
-
   if (!username) {
     return res.status(400).json({ message: 'El nombre de usuario es requerido' });
   }
-
   try {
-    // Obtener el ID del usuario a partir del nombre de usuario
-    const userResult = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
-    if (userResult.rows.length === 0) {
+    const usersRef = db.collection('users');
+    const userSnapshot = await usersRef.where('username', '==', username).get();
+    if (userSnapshot.empty) {
       return res.status(404).json({ message: 'Usuario no encontrado' });
     }
-    const userId = userResult.rows[0].id;
-
-    // Obtener los proyectos asignados al usuario junto con el nombre del creador
-    const assignedProjectsResult = await pool.query(
-      `SELECT p.id, p.name, p.description, p.date, p.username AS creator
-       FROM projects p
-       JOIN project_users pu ON p.id = pu.project_id
-       WHERE pu.user_id = $1`,
-      [userId]
-    );
-
-    res.status(200).json(assignedProjectsResult.rows);
+    const userId = userSnapshot.docs[0].id;
+    const projectUsersRef = db.collection('project_users');
+    const assignmentsSnapshot = await projectUsersRef.where('user_id', '==', userId).get();
+    const projectPromises = [];
+    assignmentsSnapshot.forEach(doc => {
+      const data = doc.data();
+      projectPromises.push(db.collection('projects').doc(data.project_id).get());
+    });
+    const projectDocs = await Promise.all(projectPromises);
+    const projects = projectDocs
+      .filter(doc => doc.exists)
+      .map(doc => ({ id: doc.id, ...doc.data(), creator: doc.data().username }));
+    res.status(200).json(projects);
   } catch (error) {
     console.error('Error al obtener los proyectos asignados:', error);
     res.status(500).json({ message: 'Error al obtener los proyectos asignados' });
   }
 };
+
 exports.assignTaskToUser = async (req, res) => {
   const { taskId, userId } = req.body; 
-
   if (!taskId || !userId) {
     return res.status(400).json({ message: 'El taskId y el userId son obligatorios' });
   }
-
   try {
-    const result = await pool.query(
-      'UPDATE tasks SET assigned_user_id = $1 WHERE id = $2 RETURNING *',
-      [userId, taskId]
-    );
-
-    if (result.rows.length === 0) {
+    const taskRef = db.collection('tasks').doc(taskId);
+    const taskDoc = await taskRef.get();
+    if (!taskDoc.exists) {
       return res.status(404).json({ message: 'Tarea no encontrada' });
     }
-
-    res.status(200).json(result.rows[0]);
+    await taskRef.update({ assigned_user_id: userId, assignedAt: new Date().toISOString() });
+    const updatedDoc = await taskRef.get();
+    res.status(200).json({ id: taskRef.id, ...updatedDoc.data() });
   } catch (error) {
     console.error('Error al asignar la tarea al usuario (BACKEND):', error);
-    res.status(500).json({ message: 'Error al asignar la tarea al usuario' });
-  }
+    res.status(500).json({ message: 'Error al asignar la tarea al usuario' });
+  }
 };

@@ -1,6 +1,5 @@
 const bcrypt = require('bcrypt');
-const { Pool } = require('pg');
-const pool = new Pool(require('../config/db'));
+const { db } = require('../config/db');
 
 const handleDatabaseError = (res, error) => {
   console.error(error);
@@ -15,30 +14,37 @@ exports.register = async (req, res) => {
   }
 
   try {
-    const userExists = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
-    if (userExists.rows.length > 0) {
+    // Verificar si el usuario ya existe
+    const usersRef = db.collection('users');
+    const userSnapshot = await usersRef.where('username', '==', username).get();
+    
+    if (!userSnapshot.empty) {
       return res.status(400).json({ message: 'El usuario ya existe' });
     }
 
-    const emailExists = await pool.query('SELECT * FROM users WHERE email = $1', [email]);
-    if (emailExists.rows.length > 0) {
+    // Verificar si el email ya está registrado
+    const emailSnapshot = await usersRef.where('email', '==', email).get();
+    if (!emailSnapshot.empty) {
       return res.status(400).json({ message: 'El correo ya está registrado' });
     }
 
+    // Crear el hash de la contraseña
     const hashedPassword = await bcrypt.hash(password, 10);
-    const userResult = await pool.query(
-      'INSERT INTO users (username, password, email) VALUES ($1, $2, $3) RETURNING id',
-      [username, hashedPassword, email]
-    );
-    const userId = userResult.rows[0].id;
+    
+    // Crear el usuario en Firebase
+    const newUser = await usersRef.add({
+      username,
+      password: hashedPassword,
+      email,
+      createdAt: new Date().toISOString(),
+      acceptTerms: acceptTerms === true || acceptTerms === 'true',
+      acceptedTermsAt: new Date().toISOString()
+    });
 
-    const accepted = acceptTerms === true || acceptTerms === 'true' ? 0 : 1;
-    await pool.query(
-      'INSERT INTO user_terms_conditions (user_id, accepted, accepted_at) VALUES ($1, $2, NOW())',
-      [userId, accepted]
-    );
-
-    res.status(201).json({ message: 'Usuario registrado exitosamente' });
+    res.status(201).json({ 
+      message: 'Usuario registrado exitosamente',
+      userId: newUser.id 
+    });
   } catch (error) {
     handleDatabaseError(res, error);
   }
@@ -51,8 +57,8 @@ exports.login = async (req, res) => {
     return res.status(400).json({ message: 'Todos los campos son obligatorios' });
   }
 
-  // Modo DEMO: usuario por defecto sin consultar BD
   try {
+    // Modo DEMO: usuario por defecto sin consultar BD
     const enableDefaultLogin = process.env.ENABLE_DEFAULT_LOGIN === 'true' || process.env.NODE_ENV !== 'production';
     if (enableDefaultLogin) {
       const DEFAULT_USER = process.env.DEFAULT_USER || 'demo';
@@ -61,21 +67,23 @@ exports.login = async (req, res) => {
       if (username === DEFAULT_USER && password === DEFAULT_PASS) {
         return res.json({
           message: 'Inicio de sesión exitoso (modo demo)',
-          userId: 0,
+          userId: 'demo-user-id',
           username: DEFAULT_USER,
           demo: true
         });
       }
     }
 
-    // Flujo normal: verificar contra la base de datos
-    const result = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+    // Flujo normal: verificar contra Firebase
+    const usersRef = db.collection('users');
+    const userSnapshot = await usersRef.where('username', '==', username).get();
 
-    if (result.rows.length === 0) {
+    if (userSnapshot.empty) {
       return res.status(401).json({ message: 'Credenciales incorrectas' });
     }
 
-    const user = result.rows[0];
+    const userDoc = userSnapshot.docs[0];
+    const user = userDoc.data();
     const passwordMatch = await bcrypt.compare(password, user.password);
 
     if (!passwordMatch) {
@@ -84,7 +92,7 @@ exports.login = async (req, res) => {
 
     res.json({
       message: 'Inicio de sesión exitoso',
-      userId: user.id,
+      userId: userDoc.id,
       username: user.username,
     });
   } catch (error) {

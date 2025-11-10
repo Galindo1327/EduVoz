@@ -10,9 +10,9 @@
         <p>
           Un EduVoz es una herramienta que te ayuda a planificar, organizar y gestionar tus proyectos de manera eficiente. Con EduVoz, puedes crear proyectos, asignar tareas, colaborar con tu equipo y hacer un seguimiento del progreso de tus proyectos en tiempo real.
         </p>
-        <button @click="irACrearProyecto" class="btn btn-primary">Crear Proyecto</button>
+        <button @click="irACrearProyecto" class="btn btn-primary">Añadir Lectura</button>
       </div>
-      <div class="row mt-4">
+      <!-- <div class="row mt-4">
         <div class="col-md-6">
           <div class="card h-100 shadow-sm">
             <div class="card-body">
@@ -33,7 +33,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </div> -->
     </div>
   </div>
 </template>
